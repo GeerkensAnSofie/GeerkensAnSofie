@@ -545,4 +545,151 @@ interaction_plot <- ggplot(important_ILs, aes(x = statin_use, y = IL6, color = g
 interaction_plot
 ```
 
-# hier nog effect size en de heatmaps. 
+# effect size 
+```{r}
+# Calculate Cohen's d for gender and statin use
+# For gender
+cohen_d_gender <- cohen.d(IL6 ~ gender, data = important_ILs)
+
+# For statin use
+cohen_d_statin <- cohen.d(IL6 ~ statin_use, data = important_ILs)
+
+# Print the results
+cohen_d_gender
+cohen_d_statin
+```
+
+# Machine Learning. 
+#The goal of machine learning (ML) in this assignment is to build a model that predicts the binary vaccine_response (e.g., 0 or 1) based on the values of biomarker data. This falls under supervised learning, where you have a training set of data with known outcomes (the vaccine_response), and the objective is to create a model capable of predicting the vaccine_response for new, unseen data.
+```{r}
+# Make sure vaccine_response is a factor 
+new_zlog_combined_without_donorid$vaccine_response <- as.factor(new_zlog_combined_without_donorid$vaccine_response)
+
+# Split the data into train and test (70% train and 30% test)
+set.seed(123)  # For reproducibility
+trainIndex <- createDataPartition(new_zlog_combined_without_donorid$vaccine_response, p = 0.7, list = FALSE)
+train_data <- new_zlog_combined_without_donorid[trainIndex, ]
+test_data <- new_zlog_combined_without_donorid[-trainIndex, ]
+
+# Train a machine learning model - Random Forest
+rf_model <- randomForest(vaccine_response ~ ., data = train_data, importance = TRUE)
+
+# Model parameters
+print(rf_model)
+# View importance of the variables
+importance(rf_model)
+
+# Get predictions for the test data, but now for the probabilities of the positive class (1)
+predictions_prob <- predict(rf_model, newdata = test_data, type = "prob")
+
+# The probabilities for the positive class are stored in the second column of the output
+predictions_prob_positive <- predictions_prob[, 2]
+
+# Make hard classifications
+predictions <- predict(rf_model, newdata = test_data)
+
+# Evaluate the model's performance
+# Confusion matrix for the model
+conf_matrix <- confusionMatrix(predictions, test_data$vaccine_response)
+print(conf_matrix)
+
+# Calculate the AUC of the model
+roc_curve <- roc(test_data$vaccine_response, predictions_prob_positive)
+
+plot(roc_curve, 
+     main = "ROC Curve", 
+     col = "blue", 
+     lwd = 2,
+     xlim = c(1, 0), 
+     ylim = c(0, 1), 
+     print.auc = TRUE, 
+     percent = TRUE,   
+     xlab = "1 - Specificity",  
+     ylab = "Sensitivity"
+) 
+# Visualize the accuracy per class with a confusion matrix
+ggplot(as.data.frame(conf_matrix$table), aes(x = Reference, y = Prediction)) +
+  geom_tile(aes(fill = Freq), color = "white") +
+  geom_text(aes(label = Freq), vjust = 1) +
+  scale_fill_gradient(low = "white", high = "steelblue") +
+  labs(title = "Confusion Matrix", x = "Actual", y = "Predicted") +
+  theme_minimal()
+
+# Visualize the feature importance of the random forest model
+varImpPlot(rf_model, main = "Variable Importance", col = "steelblue", sort = TRUE, n.var = 15) #shows the most important variables first, meandecrease means that if variable not there, accuracy of the model decreases, SFASL most important 
+
+```
+
+# Logistic regression-> Better option for binary variable. Comparing the results to the Random Forest
+```{r}
+# Make sure vaccine_response is a factor 
+new_zlog_combined_without_donorid$vaccine_response = as.factor(new_zlog_combined_without_donorid$vaccine_response)
+
+# Split the data into train and test (70% train and 30% test)
+set.seed(123)  
+trainIndex <- createDataPartition(new_zlog_combined_without_donorid$vaccine_response, p = 0.7, list = FALSE)
+train_data <- new_zlog_combined_without_donorid[trainIndex, ]
+test_data <- new_zlog_combined_without_donorid[-trainIndex, ]
+
+# Train a machine learning model - Logistic Regression
+log_reg_model <- glm(vaccine_response ~ ., data = train_data, family = binomial)
+print(log_reg_model)
+
+#Evaluate the performance of the model
+# Confusion matrix
+predictions_prob <- predict(log_reg_model, newdata = test_data, type = "response")
+
+# Convert predictions to hard classifications (0 or 1)
+predictions <- ifelse(predictions_prob > 0.5, 1, 0)
+predictions <- factor(predictions, levels = c(0, 1)) #make sure its the same levels, had some errors with that 
+conf_matrix <- confusionMatrix(predictions, test_data$vaccine_response)
+print(conf_matrix)
+
+# Calculate the AUC of the model
+roc_curve <- roc(test_data$vaccine_response, predictions_prob)  # Use the probabilities of the positive class
+print(roc_curve)
+
+plot(roc_curve, 
+     main = "ROC Curve", 
+     col = "darkgreen", 
+     lwd = 2,
+     xlim = c(1, 0),  # x-as van 1 naar 0
+     ylim = c(0, 1),  # y-as van 0 naar 1
+     print.auc = TRUE, # Toon AUC op de grafiek
+     percent = TRUE,   # Laat de waarden als percentage zien
+     xlab = "1 - Specificity",  # Aangepaste naam voor de x-as
+     ylab = "Sensitivity"
+) 
+
+
+# View the coefficients of the logistic regression model
+coefficients <- summary(log_reg_model)$coefficients
+print(coefficients)
+
+# Significance of predictors
+coeff_data <- data.frame(
+  Predictor = rownames(coefficients),
+  Estimate = coefficients[, "Estimate"],
+  PValue = coefficients[, "Pr(>|z|)"]
+)
+
+# Filter for significant coefficients
+significant_coeffs <- coeff_data[coeff_data$PValue < 0.05, ]
+
+# Plot only significant coefficients
+ggplot(significant_coeffs, aes(x = reorder(Predictor, Estimate), y = Estimate, fill = PValue < 0.05)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Logistic Regression Coefficients (Significant Only)", x = "Predictor", y = "Estimate") +
+  scale_fill_manual(values = c("TRUE" = "darkgreen", "FALSE" = "grey"), name = "Significant") +
+  theme_minimal()
+
+# Visualize the accuracy per class with a confusion matrix
+ggplot(as.data.frame(conf_matrix$table), aes(x = Reference, y = Prediction)) +
+  geom_tile(aes(fill = Freq), color = "white") +
+  geom_text(aes(label = Freq), vjust = 1) +
+  scale_fill_gradient(low = "white", high = "darkgreen") +
+  labs(title = "Confusion Matrix", x = "Actual", y = "Predicted") +
+  theme_minimal()
+
+```
