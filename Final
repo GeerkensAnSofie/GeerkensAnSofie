@@ -489,12 +489,38 @@ for(il in c("IL2", "IL4", "IL6", "IL10")) {
 }
 ```
 
-# Assumptions of the ANOVA
+# calculations to see where the biggest difference is -> IL10 -> with this one we will work 
+```{r}
+# Function to calculate differences between statin users (1) and non-users (0)
+calculate_difference <- function(data, il) {
+  data %>%
+    group_by(gender, statin_use) %>%
+    summarise(mean_expression = mean(.data[[il]], na.rm = TRUE)) %>%
+    pivot_wider(names_from = statin_use, values_from = mean_expression, names_prefix = "statin_") %>%
+    mutate(difference = statin_1 - statin_0) %>%
+    select(gender, difference) %>%
+    mutate(IL = il)
+}
+
+# Perform calculations for all ILs
+results <- bind_rows(
+  lapply(c("IL2", "IL4", "IL6", "IL10"), function(il) calculate_difference(important_ILs, il))
+)
+
+# Compare results between men and women
+results <- results %>%
+  pivot_wider(names_from = gender, values_from = difference, names_prefix = "difference_") %>%
+  mutate(difference_between_genders = abs(difference_Male - difference_Female))
+
+print(results)
+```
+
+# Assumptions of the two-sample T-test
 # 1) Independent Data (Design) -> Ok because it depends on the design of the study
 # 2) Normality of the Sample Observations in Both Groups
 ```{r}
 # Equation for anova 
-model <- lm(IL6 ~ gender + statin_use + gender:statin_use, data = important_ILs)
+model <- lm(IL10 ~ gender + statin_use + gender:statin_use, data = important_ILs)
 
 # Extract residuals
 residuals <- residuals(model)
@@ -513,16 +539,16 @@ hist(residuals, main = "Histogram of Residuals", xlab = "Residuals") # but when 
 #3) Code for the variances
 ```{r}
 # Levene's Test
-leveneTest(IL6 ~ gender * statin_use, data = important_ILs)
+leveneTest(IL10 ~ gender * statin_use, data = important_ILs)
 
 # Bartlett's Test
-bartlett.test(IL6 ~ interaction(gender, statin_use), data = important_ILs) # cant reject null hypo -> so equal variances il6 and gender, il6 and statin_use 
+bartlett.test(IL10 ~ interaction(gender, statin_use), data = important_ILs) # cant reject null hypo -> so equal variances il10 and gender, il10 and statin_use 
 ```
 
 #Statistical test 
 ```{r}
 # Linear model
-model <- lm(IL6 ~ gender + statin_use + gender:statin_use, data = important_ILs)
+model <- lm(IL10 ~ gender + statin_use + gender:statin_use, data = important_ILs)
 
 summary(model)
 
@@ -535,25 +561,32 @@ anova_result
 # For men (Male, blue line), there is a clear decrease in the average IL6 value when they use statins (from statin_use = 0 to statin_use = 1). This suggests that statin use may have a strong effect on IL6 levels in men. For women (Female, pink line), the decrease in IL6 value with statin use is much less pronounced, indicating a possibly weaker effect of statins on IL6 in women.
 ```{r}
 # Interaction plot
-interaction_plot <- ggplot(important_ILs, aes(x = statin_use, y = IL6, color = gender)) +
+interaction_plot <- ggplot(important_ILs, aes(x = statin_use, y = IL10, color = gender)) +
   stat_summary(fun = mean, geom = "point", size = 3) +
   stat_summary(fun = mean, geom = "line", aes(group = gender)) +
   theme_minimal() +
-  labs(title = "Interaction between Gender, Statin Use, and IL6",
+  labs(title = "Interaction between Gender, Statin Use, and IL10",
        x = "Statin Use",
-       y = "Average IL6",
+       y = "Average IL10",
        color = "Gender")
 interaction_plot
 ```
 
 # effect size 
 ```{r}
+if (!requireNamespace("effsize", quietly = TRUE)) {
+  install.packages("effsize")
+}
+
+# Load the 'effsize' package
+library(effsize)
+
 # Calculate Cohen's d for gender and statin use
 # For gender
-cohen_d_gender <- cohen.d(IL6 ~ gender, data = important_ILs)
+cohen_d_gender <- cohen.d(IL10 ~ gender, data = important_ILs)
 
 # For statin use
-cohen_d_statin <- cohen.d(IL6 ~ statin_use, data = important_ILs)
+cohen_d_statin <- cohen.d(IL10 ~ statin_use, data = important_ILs)
 
 # Print the results
 cohen_d_gender
