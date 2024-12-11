@@ -414,8 +414,8 @@ cat("Mean Group 2: ", mean_group2, "\n")
 cat("Mean Shift: ", mean_shift, "\n")
 ```
 
-#Research Question 2: Is the expression of the IL6 associated with gender and the statin-use of the vaccinated person?
-#Hypothesis 2: The expression of IL6 after vaccination differs between men and women and is further influenced by statin use, with statin users showing lower IL-6 expression compared to non-users. 
+#Research Question 2: Is the expression of the IL10 associated with gender and the statin-use of the vaccinated person?
+#Hypothesis 2: The expression of IL10 after vaccination differs between men and women and is further influenced by statin use, with statin users showing lower IL-6 expression compared to non-users. 
 
 #Counting and visualizing the amount of different units to see which one to use
 ```{r}
