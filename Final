@@ -1,0 +1,184 @@
+#Read data set
+```{r}
+fluprint = read.csv('/Users/an-sofiegeerkens/Documents/MA_1/Semester_1/LSA/Large_Scala_analysis/Data/fluprint_export.csv')
+```
+
+#Installing all the packages if needed and opening them
+```{r}
+if (!requireNamespace("tidyr", quietly = TRUE)) {
+  install.packages("tidyr")
+}
+library(tidyr)
+  
+if (!requireNamespace("corrplot", quietly = TRUE)) {
+  install.packages("corrplot")
+}
+library(corrplot)
+
+if (!requireNamespace("ggplot2", quietly = TRUE)) {
+  install.packages("ggplot2")
+}
+library(ggplot2)
+
+if (!requireNamespace("dplyr", quietly = TRUE)) {
+  install.packages("dplyr")
+}
+library(dplyr)
+
+if (!requireNamespace("reshape2", quietly = TRUE)) {
+  install.packages("reshape2")
+}
+library(reshape2)
+
+if (!requireNamespace("RColorBrewer", quietly = TRUE)) {
+  install.packages("RColorBrewer")
+}
+library(RColorBrewer)
+  
+if (!requireNamespace("pheatmap", quietly = TRUE)) {
+  install.packages("pheatmap")
+}
+library(pheatmap)
+
+if (!requireNamespace("randomForest", quietly = TRUE)) {
+  install.packages("randomForest")
+}
+library(randomForest)
+
+if (!requireNamespace("caret", quietly = TRUE)) {
+  install.packages("caret")
+}
+library(caret)
+
+if (!requireNamespace("pROC", quietly = TRUE)) {
+  install.packages("pROC")
+}
+library(pROC) 
+
+if (!requireNamespace("car", quietly = TRUE)) {
+  install.packages("car")
+}
+library(car)
+```
+
+#Convert all the NULL values with 'NA' in a new dataset 'fluprint_na'
+```{r}
+fluprint_na <- fluprint
+fluprint_na[fluprint_na == "NULL"] <- NA
+print(fluprint_na)
+```
+#Make a correlation matrix with the fluprint_na, only numeric variables present -> no correlations
+```{r}
+# Select only numeric columns from the dataset
+correlation_matrix <- fluprint_na[, sapply(fluprint_na, is.numeric)]
+
+# Compute the correlation matrix
+cor_matrix <- cor(correlation_matrix, use = "pairwise.complete.obs")
+
+# Generate the correlation plot
+corrplot(cor_matrix, method = "color", type = "upper", order = "hclust",
+         tl.col = "black", tl.srt = 45)
+```
+
+#Counting and visualizing the amount of NAs for each column to see wheter we should drop (<80%) the column or not
+```{r}
+# Calculate total percentage of NA values in the dataset
+total_na_percentage <- (sum(is.na(fluprint_na)) / (nrow(fluprint_na) * ncol(fluprint_na))) * 100
+
+# Calculate percentage of NA values per column
+na_percentage_per_column <- colSums(is.na(fluprint_na)) / nrow(fluprint_na) * 100
+
+# Print results
+cat("Total percentage of NA values in the dataset:", round(total_na_percentage, 2), "%\n")
+cat("Percentage of NA values per column:\n")
+print(round(na_percentage_per_column, 2))
+is.na
+
+# Calculate percentage of NA values per column
+na_percentage_per_column <- colSums(is.na(fluprint_na)) / nrow(fluprint_na) * 100
+
+# Convert to a data frame to ggplot2
+na_data <- data.frame(
+  Column = names(na_percentage_per_column),
+  NA_Percentage = na_percentage_per_column
+)
+
+# Create the bar plot
+ggplot(na_data, aes(x = reorder(Column, -NA_Percentage), y = NA_Percentage)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  coord_flip() +  # Flip the axes for better readability if many columns
+  labs(
+    title = "Percentage of Missing Values per Column",
+    x = "Columns",
+    y = "NA Percentage"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+#Split the data into metadata and measurements datasets (to make things easier)
+```{r}
+# Make the 'metadata' dataset 
+metadata <- fluprint_na[, c(1:16, 24:38)]
+
+# Make the 'measurements' dataset 
+measurements <- fluprint_na[, c(1, 17:23)]
+
+head(metadata)
+head(measurements)
+```
+
+#See if every donor_id is only associated to one visit_id -> Every patient only came once
+```{r}
+metadata %>%
+  group_by(donor_id) %>%
+  summarise(unique_visits = n_distinct(visit_id)) %>%
+  filter(unique_visits > 1)
+```
+
+#Keep only one row per donor_id, as the values are the same
+```{r}
+metadata_combined <- metadata %>%
+  distinct(donor_id, .keep_all = TRUE) 
+
+print(metadata_combined)
+```
+
+#Counting and visualization of the different values and its abundance in the 'name' colum to see if we can focus on something specific
+#It is not relevant to use, because there are differnt units 
+```{r}
+name_counts <- table(fluprint_na$name)
+name_counts_df <- as.data.frame(name_counts)
+colnames(name_counts_df) <- c("name", "Frequency")
+
+print(name_counts_df)
+```
+
+#Counting and visualizing the amount of different units to see which one to use
+```{r}
+# Count the frequency of each unique value in the 'name' column
+units_counts <- table(fluprint_na$units)
+
+# Convert to a data frame for better readability
+units_counts_df <- as.data.frame(units_counts)
+colnames(units_counts_df) <- c("units", "Frequency")
+
+print(units_counts_df)
+
+
+# Convert to a data frame to ggplot2
+units_counts_df <- as.data.frame(units_counts)
+colnames(units_counts_df) <- c("units", "Frequency")
+
+# Create the bar plot
+ggplot(units_counts_df, aes(x = reorder(units, -Frequency), y = Frequency)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  coord_flip() +  # Flip axes for better readability
+  labs(
+    title = "Frequency of Unique Values in 'units' Column",
+    x = "units",
+    y = "Frequency"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
