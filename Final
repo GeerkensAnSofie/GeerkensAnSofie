@@ -67,6 +67,7 @@ fluprint_na <- fluprint
 fluprint_na[fluprint_na == "NULL"] <- NA
 print(fluprint_na)
 ```
+
 #Make a correlation matrix with the fluprint_na, only numeric variables present -> no correlations
 ```{r}
 # Select only numeric columns from the dataset
