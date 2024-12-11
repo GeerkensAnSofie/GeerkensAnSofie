@@ -182,3 +182,367 @@ ggplot(units_counts_df, aes(x = reorder(units, -Frequency), y = Frequency)) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
+
+#Splitting the measurement dataset into 8 new datasets according to the value of the 'units' column
+```{r}
+data_OfParent <- measurements %>%
+  filter(units == "% of Parent")
+
+data_OfViable <- measurements %>%
+  filter(units == "% of Viable")
+
+data_90thTile <- measurements %>%
+  filter(units == "90th %tile")
+
+data_arcsinh <- measurements %>%
+  filter(units == "arcsinh")
+
+data_AsNoted <- measurements %>%
+  filter(units == "as noted")
+
+data_avgIntensity <- measurements %>%
+  filter(units == "avg Intensity")
+
+data_avgMFI <- measurements %>%
+  filter(units == "avg MFI")
+
+data_Z.log2 <- measurements %>%
+  filter(units == "Z.log2")
+
+print(data_OfParent)
+print(data_OfViable)
+print(data_90thTile)
+print(data_arcsinh)
+print(data_AsNoted)
+print(data_avgIntensity)
+print(data_avgMFI)
+print(data_Z.log2)
+```
+
+#Combining all the rows of the 'data_z.log2' dataset that represent one patient in the new 'zlog_combined' dataset and putting the values in the 'subset' as colums
+```{r}
+zlog_combined <- data_Z.log2 %>%
+  select(donor_id, subset, data) %>%
+  pivot_wider(
+    names_from = subset,
+    values_from = data
+  )
+
+print(zlog_combined)
+```
+
+#Creating a new measurement dataset in which the column 'vaccine_response' is included. Then repeat all the steps from above (splitting according to 'units' value and combining the rows for 1 patient)
+```{r}
+new_measurements <- fluprint_na[, c(1, 16:23)]
+head(new_measurements)
+
+
+new_data_Z.log2 <- new_measurements %>%
+  filter(units == "Z.log2")
+head(new_data_Z.log2)
+
+
+new_zlog_combined <- new_data_Z.log2 %>%
+  select(donor_id, vaccine_response, subset, data) %>%
+  pivot_wider(
+    names_from = subset,
+    values_from = data
+  )
+head(new_zlog_combined)
+
+```
+
+#Transforming all the NAs in the 'vaccine_response' column into zero -> Better to suppose patients had a low vaccines response then a high one 
+```{r}
+new_zlog_combined_NA <- new_zlog_combined
+new_zlog_combined_NA$vaccine_response[is.na(new_zlog_combined_NA$vaccine_response)] <- 0
+
+head(new_zlog_combined_NA)
+```
+
+#Make heatmap -> NAs are imputed using the mean 
+```{r}
+# Delete the donor_id column 
+new_zlog_combined_without_donorid <- new_zlog_combined_NA[, -1]
+
+# Make 'vaccine_response' numeric -> it's 1 and 2 now
+new_zlog_combined_without_donorid$vaccine_response <- as.numeric(new_zlog_combined_without_donorid$vaccine_response)
+
+# Impute using the average (beside 'vaccine_response')
+new_zlog_combined_without_donorid[] <- lapply(new_zlog_combined_without_donorid, 
+                                                     function(x) replace(x, is.na(x), mean(x, na.rm = TRUE)))
+
+# Calculate the correlation matrix
+cor_matrix <- cor(new_zlog_combined_without_donorid, use = "pairwise.complete.obs")
+
+# Make the heatmap
+pheatmap(cor_matrix, 
+         main = "Heatmap of Correlations including Vaccine Response", 
+         cluster_rows = TRUE, 
+         cluster_cols = TRUE, 
+         color = colorRampPalette(c("blue", "white", "red"))(50),
+         scale = "none", 
+         fontsize = 5)  # Pas fontsize aan indien nodig
+```
+
+#Calculation of the correlations between 'vaccine_response' and some other biomarkers -> low correlations so no need for PCA 
+```{r}
+cor_results <- sapply(new_zlog_combined_without_donorid, function(x) {
+  if (is.numeric(x)) {
+    cor(x, as.numeric(new_zlog_combined_without_donorid$vaccine_response), method = "pearson")
+  } else {
+    NA
+  }
+})
+
+print(cor_results)
+
+sorted_cor_results <- sort(cor_results, decreasing = TRUE)
+
+# Select 2 of the biomarkers with the higher correlation
+top_2_biomarkers <- names(sorted_cor_results)[2:3]  # 2:3 cuz the first value of the correlation is just itself 
+
+# Show the 2 biomarkers with highest correlation and their correlation 
+top_2_correlations <- sorted_cor_results[2:3]
+
+print(top_2_correlations)
+```
+
+# Research Question 1: Is there an association between the expression of IFNG and the vaccine response (vaccine_response = 1)?
+# Hypothesis 1: Higher expression of IFNG is associated with an increased likelihood of a positive vaccine response (vaccine_response = 1).
+
+# Assumptions of two sample T-test
+# 1) Independent Data -> Ok, as it depends on the study design
+# 2) Normality of Sample Observations -> Ok, as graphs are ok
+```{r}
+# Preparation for T-test
+#Dividing vaccine_response into 2 groups
+group1 <- new_zlog_combined_without_donorid %>% filter(vaccine_response == 1) %>% pull(IFNG)
+group2 <- new_zlog_combined_without_donorid %>% filter(vaccine_response == 0) %>% pull(IFNG)
+
+combined_data <- c(group1, group2)
+
+# Create a linear model for the combined data
+combined_model <- lm(combined_data ~ 1)
+
+# Obtain the residuals from the combined model
+combined_residuals <- residuals(combined_model)
+
+# Set the plotting layout to display two plots side by side
+par(mfrow = c(1, 2)) 
+
+# Q-Q plot 
+qqnorm(combined_residuals, main = "Q-Q Plot")
+qqline(combined_residuals, col = "red")
+
+# Histogram 
+hist(combined_residuals, 
+     main = "Histogram", 
+     xlab = "Residuals", 
+     col = "lightblue", 
+     border = "black", 
+     breaks = 20)
+```
+
+# 3) Equality of Variances (Homogeneity of Variances) -> Ok, as p-value > 0,05
+```{r}
+# Levene's test 
+levene_test <- leveneTest(IFNG ~ factor(vaccine_response), data = new_zlog_combined_without_donorid)
+
+cat("Levene's Test Result:\n")
+cat("P-value: ", levene_test$`Pr(>F)`[1], "\n")
+
+
+# F-test 
+var_test <- var.test(group1, group2)
+
+cat("F-test Result:\n")
+cat("F-statistic: ", var_test$statistic, "\n")
+cat("P-value: ", var_test$p.value, "\n")
+```
+
+#Two sample T-test
+```{r}
+# T-test
+t_test_result <- t.test(group1, group2)
+
+cat("T-test Result: \n")
+cat("T-statistic: ", t_test_result$statistic, "\n")
+cat("P-value: ", t_test_result$p.value, "\n")
+
+# Boxplot + p-value
+ggplot(new_zlog_combined_without_donorid, aes(x = factor(vaccine_response), y = IFNG, fill = factor(vaccine_response))) +
+  geom_boxplot() +
+  labs(
+    title = "IFNG Distribution per Vaccine Response", 
+    x = "Vaccine Response", 
+    y = "IFNG Expression"
+  ) +
+  scale_fill_manual(values = c("lightblue", "lightcoral")) +  
+  theme_minimal() +
+
+# Add p-value above boxplot
+  annotate("text", x = 1.5, y = max(new_zlog_combined_without_donorid$IFNG, na.rm = TRUE) + 0.5, 
+           label = paste("p =", round(t_test_result$p.value, 4)), size = 5, color = "black")
+
+```
+
+#Calculate the interval
+```{r}
+ci_lower <- t_test_result$conf.int[1]
+ci_upper <- t_test_result$conf.int[2]
+
+# Confidence interval
+cat("Confidence Interval (95%): \n")
+cat("Lower bound: ", ci_lower, "\n")
+cat("Upper bound: ", ci_upper, "\n")
+
+# T-test again with a 95% confidence level
+t_test_result <- t.test(group1, group2, conf.level = 0.95)
+```
+
+# Calculate the mean shift 
+# The difference between the two groups is 0.313 Z.log2-units. Since the data is log-transformed using a base of 2, this can be interpreted as follows: a difference of 1 log2-unit corresponds to a doubling in gene expression. Therefore, a difference of 0.313 log2-units means that the average expression in group 1 is approximately ≈1.24 times higher than in group 2. In other words, the IFNG expression in group 1(Vaccine_rep=1) is about 24% higher compared to group 2(Vaccine_rep=0).
+```{r}
+mean_group1 <- mean(group1)
+mean_group2 <- mean(group2)
+mean_shift <- mean_group1 - mean_group2
+
+cat("Mean Group 1: ", mean_group1, "\n")
+cat("Mean Group 2: ", mean_group2, "\n")
+cat("Mean Shift: ", mean_shift, "\n")
+```
+
+#Research Question 2: Is the expression of the IL6 associated with gender and the statin-use of the vaccinated person?
+#Hypothesis 2: The expression of IL6 after vaccination differs between men and women and is further influenced by statin use, with statin users showing lower IL-6 expression compared to non-users. 
+
+#Counting and visualizing the amount of different units to see which one to use
+```{r}
+# Count the frequency of each unique value in the 'name' column
+statin_counts <- table(fluprint_na$statin_use)
+
+# Convert to a data frame for better readability
+statin_counts_df <- as.data.frame(statin_counts)
+colnames(statin_counts_df) <- c("statin_use", "Frequency")
+
+print(statin_counts_df)
+```
+
+#Creating a new measurement dataset in which the columns 'statine_use' and 'gender' are included. Then repeat all the steps from before.
+```{r}
+hypothesis2_measurements <- fluprint_na[, c(1, 3, 17:24)]
+head(hypothesis2_measurements)
+
+hypothesis2_data_Z.log2 <- hypothesis2_measurements %>%
+  filter(units == "Z.log2")
+head(hypothesis2_data_Z.log2)
+
+hypothesis2_zlog_combined <- hypothesis2_data_Z.log2 %>%
+  select(donor_id, gender, subset, data, statin_use) %>%
+  pivot_wider(
+    names_from = subset,
+    values_from = data
+  )
+print(hypothesis2_zlog_combined)
+```
+
+#Making the new dataset and imputing  
+```{r}
+hypothesis2_zlog_combined <- hypothesis2_data_Z.log2 %>%
+  select(donor_id,gender, subset, data, statin_use) %>%
+  pivot_wider(
+    names_from = subset,
+    values_from = data
+  )
+
+# Replace NAs in cytokine columns with the mean of the column
+hypothesis2_zlog_combined_imputed <- hypothesis2_zlog_combined %>%
+  mutate(across(
+    where(is.numeric),  
+    ~ ifelse(is.na(.), mean(., na.rm = TRUE), .)  
+  ))
+
+print(hypothesis2_zlog_combined_imputed)
+```
+
+#Based on the literature, the important cytokines for immune respons are kept in a dataset. 
+```{r}
+# New dataset with only the important ILs
+important_ILs <- hypothesis2_zlog_combined_imputed %>%
+  select(donor_id, gender, statin_use, IL2, IL4, IL6, IL10)  # Change the column names to the correct IL names
+
+important_ILs$statin_use[is.na(important_ILs$statin_use)] <- 0
+
+print(important_ILs)
+
+# Making a visualisation of the 3 variables -> we toke IL6 to do the hypothesis2
+for(il in c("IL2", "IL4", "IL6", "IL10")) {
+  p <- ggplot(important_ILs, aes(x = statin_use, y = important_ILs[[il]], fill = gender)) +
+    geom_boxplot() +
+    theme_minimal() +
+    labs(title = paste("Boxplot van", il, "naar Statin Use en Gender"),
+         x = "Statin Use",
+         y = il) +
+    scale_fill_manual(values = c("Male" = "blue", "Female" = "pink"))
+  print(p)
+}
+```
+
+# Assumptions of the two-sample T-test
+# 1) Independent Data (Design) -> Ok because it depends on the design of the study
+# 2) Normality of the Sample Observations in Both Groups
+```{r}
+# Equation for anova 
+model <- lm(IL6 ~ gender + statin_use + gender:statin_use, data = important_ILs)
+
+# Extract residuals
+residuals <- residuals(model)
+
+# Shapiro-Wilk test
+shapiro.test(residuals) #reject the null hypothesis -> data not normal 
+
+# Q-Q plot
+qqnorm(residuals)
+qqline(residuals)
+
+# Histogram of residuals
+hist(residuals, main = "Histogram of Residuals", xlab = "Residuals") # but when plotting the histogram, looks normal enough to do anova 
+```
+
+#3) Code for the variances
+```{r}
+# Levene's Test
+leveneTest(IL6 ~ gender * statin_use, data = important_ILs)
+
+# Bartlett's Test
+bartlett.test(IL6 ~ interaction(gender, statin_use), data = important_ILs) # cant reject null hypo -> so equal variances il6 and gender, il6 and statin_use 
+```
+
+#Statistical test 
+```{r}
+# Linear model
+model <- lm(IL6 ~ gender + statin_use + gender:statin_use, data = important_ILs)
+
+summary(model)
+
+# ANOVA
+anova_result <- anova(model)
+anova_result
+```
+
+# Visualisation of the hypothesis 2
+# For men (Male, blue line), there is a clear decrease in the average IL6 value when they use statins (from statin_use = 0 to statin_use = 1). This suggests that statin use may have a strong effect on IL6 levels in men. For women (Female, pink line), the decrease in IL6 value with statin use is much less pronounced, indicating a possibly weaker effect of statins on IL6 in women.
+```{r}
+# Interaction plot
+interaction_plot <- ggplot(important_ILs, aes(x = statin_use, y = IL6, color = gender)) +
+  stat_summary(fun = mean, geom = "point", size = 3) +
+  stat_summary(fun = mean, geom = "line", aes(group = gender)) +
+  theme_minimal() +
+  labs(title = "Interaction between Gender, Statin Use, and IL6",
+       x = "Statin Use",
+       y = "Average IL6",
+       color = "Gender")
+interaction_plot
+```
+
+# hier nog effect size en de heatmaps. 
