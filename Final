@@ -515,7 +515,7 @@ results <- results %>%
 print(results)
 ```
 
-# Assumptions of the two-sample T-test
+# Assumptions of the ANOVA
 # 1) Independent Data (Design) -> Ok because it depends on the design of the study
 # 2) Normality of the Sample Observations in Both Groups
 ```{r}
