@@ -476,7 +476,7 @@ important_ILs$statin_use[is.na(important_ILs$statin_use)] <- 0
 
 print(important_ILs)
 
-# Making a visualisation of the 3 variables -> we toke IL6 to do the hypothesis2
+# Making a visualisation of the 3 variables -> we took IL10 to do the hypothesis2
 for(il in c("IL2", "IL4", "IL6", "IL10")) {
   p <- ggplot(important_ILs, aes(x = statin_use, y = important_ILs[[il]], fill = gender)) +
     geom_boxplot() +
@@ -558,7 +558,6 @@ anova_result
 ```
 
 # Visualisation of the hypothesis 2
-# For men (Male, blue line), there is a clear decrease in the average IL6 value when they use statins (from statin_use = 0 to statin_use = 1). This suggests that statin use may have a strong effect on IL6 levels in men. For women (Female, pink line), the decrease in IL6 value with statin use is much less pronounced, indicating a possibly weaker effect of statins on IL6 in women.
 ```{r}
 # Interaction plot
 interaction_plot <- ggplot(important_ILs, aes(x = statin_use, y = IL10, color = gender)) +
